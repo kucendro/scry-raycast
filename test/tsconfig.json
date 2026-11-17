@@ -1,0 +1,9 @@
+{
+  "extends": "../extension/tsconfig.json",
+  "include": ["*.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "typeRoots": ["../extension/node_modules/@types"]
+  }
+}

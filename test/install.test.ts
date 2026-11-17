@@ -3,12 +3,12 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { AddressInfo } from "node:net";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { Archive, VERSION, archive, install } from "./install";
-import { Download } from "./scry";
+import { type Archive, VERSION, archive, install } from "../extension/src/install.ts";
+import type { Download } from "../extension/src/scry.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "scry-raycast-install-"));
 const name = "scry-cli-test";

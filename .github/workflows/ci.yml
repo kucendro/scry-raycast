@@ -21,7 +21,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: extension/package-lock.json
       - run: npm ci
+        working-directory: extension
       - run: npx ray build --non-interactive --exit-on-error --environment dist --output ${{ runner.temp }}/raycast
+        working-directory: extension
       - run: npx ray lint --non-interactive
-      - run: npm test
+        working-directory: extension
+      - run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'test/*.test.ts'
+      - run: extension/node_modules/.bin/tsc -p test
