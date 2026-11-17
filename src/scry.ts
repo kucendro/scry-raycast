@@ -1,30 +1,17 @@
 import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { accessSync, closeSync, constants, openSync, readSync, unlinkSync } from "node:fs";
-import { homedir, tmpdir, userInfo } from "node:os";
-import { delimiter, join } from "node:path";
+import { closeSync, openSync, readSync, unlinkSync } from "node:fs";
+import { tmpdir, userInfo } from "node:os";
+import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
 const TICK = 50;
 const NAME = "scry-raycast";
 
-const INSTALL_DIRS = [
-  join(homedir(), ".local/bin"),
-  join(homedir(), ".cargo/bin"),
-  join(homedir(), ".nix-profile/bin"),
-  `/etc/profiles/per-user/${userInfo().username}/bin`,
-  "/run/current-system/sw/bin",
-];
-
 export type Download = { type: "download"; label: string; done: number; total: number };
 export type Progress = { type: "progress"; stage: string; done: number; total: number; walking: boolean };
 type Event =
   Download | Progress | { type: "match"; path: string } | { type: "end" } | { type: "error"; message: string };
-
-export function findScry(): string | undefined {
-  const dirs = [...(process.env.PATH ?? "").split(delimiter).filter(Boolean), ...INSTALL_DIRS];
-  return dirs.map((dir) => join(dir, "scry")).find(isExecutable);
-}
 
 export function literal(text: string): string {
   return text.replace(/[\\.+*?()|[\]{}^$#&\-~]/g, "\\$&");
@@ -89,13 +76,4 @@ function lines(fd: number, line: (text: string) => void): () => void {
     rest = whole.pop()!;
     whole.forEach(line);
   };
-}
-
-function isExecutable(path: string): boolean {
-  try {
-    accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
