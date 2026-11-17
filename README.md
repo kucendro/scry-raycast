@@ -1,11 +1,13 @@
-<picture><source media="(prefers-color-scheme: dark)" srcset="media/logo.svg"><img src="media/logo-light.svg" alt="scry-raycast" align="left" width="208"></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="media/logo.svg"><img src="media/logo-light.svg" alt="scry-raycast" align="left" width="242"></picture>
 
-<samp>grep for images: search by metadata, OCR text, and meaning<br><br>
-The search runs on <a href="https://github.com/JirkaKlimes/scry">scry</a>, a command-line tool by <a href="https://github.com/JirkaKlimes">JirkaKlimes</a>.</samp>
+<samp>grep for images<br>
+search by metadata, OCR text, and meaning</samp>
 
 <br clear="left">
 
 ---
+
+The search runs on [scry](https://github.com/JirkaKlimes/scry), a command-line tool by [JirkaKlimes](https://github.com/JirkaKlimes).
 
 ## Setup
 
