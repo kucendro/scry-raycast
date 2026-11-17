@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { Download, Progress, literal, run } from "./scry";
+import { type Download, type Progress, literal, run } from "../extension/src/scry.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "scry-raycast-test-"));
 after(() => rmSync(dir, { recursive: true, force: true }));
@@ -45,6 +45,16 @@ exit 2`);
   await assert.rejects(
     run(scry, [], () => {}),
     { message: "cannot read the folder" },
+  );
+});
+
+test("fails when a line is not JSON", async () => {
+  const scry = fake(`
+echo 'loading the model'
+${END}`);
+  await assert.rejects(
+    run(scry, [], () => {}),
+    { message: "scry printed a line that is not JSON: loading the model" },
   );
 });
 

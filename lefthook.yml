@@ -3,7 +3,7 @@ pre-commit:
   commands:
     prettier:
       glob: "*.{ts,tsx,js,json,md,yml,yaml}"
-      run: npx prettier --write {staged_files}
+      run: extension/node_modules/.bin/prettier --config extension/.prettierrc --write {staged_files}
       stage_fixed: true
     nixfmt:
       glob: "*.nix"
