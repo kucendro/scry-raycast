@@ -1,4 +1,4 @@
-# Scry
+# scry
 
 grep for images: search by metadata, OCR text, and meaning
 
