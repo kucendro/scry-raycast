@@ -1,25 +1,31 @@
-import { spawn } from "node:child_process";
-import { accessSync, constants } from "node:fs";
-import { homedir, userInfo } from "node:os";
+import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { accessSync, closeSync, constants, openSync, readSync, unlinkSync } from "node:fs";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { basename, delimiter, join } from "node:path";
-import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import { useMemo, useRef, useState } from "react";
 import {
   Action,
   ActionPanel,
+  Color,
   Grid,
   Icon,
   Keyboard,
   LaunchProps,
-  Toast,
   getPreferenceValues,
   openExtensionPreferences,
 } from "@raycast/api";
-import { usePromise } from "@raycast/utils";
+import { getProgressIcon, usePromise } from "@raycast/utils";
 
 const LIMIT = "50";
 
-// Where the install methods in scry's README put the binary. Raycast does not load the shell's PATH.
+const TICK = 50;
+const DELAY = 1000;
+const LONG = 8000;
+
+const NAME = "scry-raycast";
+
 const INSTALL_DIRS = [
   join(homedir(), ".local/bin"),
   join(homedir(), ".cargo/bin"),
@@ -28,23 +34,16 @@ const INSTALL_DIRS = [
   "/run/current-system/sw/bin",
 ];
 
+type Mode = "query" | "text";
+
 export default function SearchImages(props: LaunchProps<{ arguments: Arguments.SearchImages }>) {
   const { folder, scryPath } = getPreferenceValues<Preferences>();
   const scry = useMemo(() => scryPath || findScry(), [scryPath]);
   const [query, setQuery] = useState(props.arguments.query ?? "");
+  const [mode, setMode] = useState<Mode>("query");
   const text = query.trim();
-
-  // usePromise aborts the previous search when the text changes, which kills its scry.
-  const abortable = useRef<AbortController>(null);
-  const { isLoading, data } = usePromise(
-    (scry: string, text: string, folder: string) => search(scry, text, folder, abortable.current?.signal),
-    [scry ?? "", text, folder],
-    {
-      abortable,
-      execute: scry !== undefined && text !== "",
-      failureToastOptions: { title: "scry failed" },
-    },
-  );
+  const options = mode === "query" ? [`--query=${text}`] : [`--text=${literal(text)}`, "--sort", "date"];
+  const search = useSearch(scry, folder, text === "" ? undefined : options);
 
   if (scry === undefined) {
     return (
@@ -67,32 +66,79 @@ export default function SearchImages(props: LaunchProps<{ arguments: Arguments.S
     );
   }
 
-  const paths = text === "" ? [] : (data ?? []);
   return (
     <Grid
-      isLoading={isLoading}
+      isLoading={search.isLoading}
       filtering={false}
       throttle
       searchText={query}
       onSearchTextChange={setQuery}
-      searchBarPlaceholder="What the image shows"
+      searchBarPlaceholder={mode === "query" ? "What the image shows" : "Text in the image"}
+      searchBarAccessory={
+        <Grid.Dropdown tooltip="Search By" storeValue onChange={(value) => setMode(value as Mode)}>
+          <Grid.Dropdown.Item title="Meaning" value="query" />
+          <Grid.Dropdown.Item title="Text in Images" value="text" />
+        </Grid.Dropdown>
+      }
     >
-      {text === "" ? (
+      {text !== "" ? (
+        <Matches search={search} scry={scry} folder={folder} />
+      ) : mode === "query" ? (
         <Grid.EmptyView
           icon={Icon.MagnifyingGlass}
           title="Describe the image"
           description={`In any language. scry searches ${folder}`}
         />
-      ) : isLoading ? (
+      ) : (
         <Grid.EmptyView
-          icon={Icon.Hourglass}
-          title="Searching"
-          description="The first search in a folder downloads the model and reads every image, which can take minutes"
+          icon={Icon.Text}
+          title="Type the text in the image"
+          description={`scry reads the images in ${folder}`}
         />
+      )}
+    </Grid>
+  );
+}
+
+function Similar({ scry, folder, path }: { scry: string; folder: string; path: string }) {
+  const search = useSearch(scry, folder, [`--like=${path}`]);
+  return (
+    <Grid isLoading={search.isLoading} navigationTitle={`Like ${basename(path)}`} searchBarPlaceholder="Filter by name">
+      <Matches search={search} scry={scry} folder={folder} />
+    </Grid>
+  );
+}
+
+type Search = { isLoading: boolean; status: Status | undefined; paths: string[] };
+
+function useSearch(scry: string | undefined, folder: string, options: string[] | undefined): Search {
+  const abortable = useRef<AbortController>(null);
+  const [progress, setProgress] = useState<Status>();
+  const { isLoading, data } = usePromise(
+    (scry: string, folder: string, options: string[]) =>
+      search(scry, folder, options, setProgress, abortable.current?.signal),
+    [scry ?? "", folder, options ?? []],
+    {
+      abortable,
+      execute: scry !== undefined && options !== undefined,
+      failureToastOptions: { title: "scry failed" },
+    },
+  );
+  const status = isLoading ? progress : undefined;
+  return { isLoading, status, paths: options === undefined || status ? [] : (data ?? []) };
+}
+
+function Matches({ search, scry, folder }: { search: Search; scry: string; folder: string }) {
+  return (
+    <>
+      {search.status ? (
+        <Grid.EmptyView {...progressView(search.status)} />
+      ) : search.isLoading ? (
+        <Grid.EmptyView icon={Icon.Hourglass} title="Searching" />
       ) : (
         <Grid.EmptyView icon={Icon.Image} title="No image matches" />
       )}
-      {paths.map((path) => (
+      {search.paths.map((path) => (
         <Grid.Item
           key={path}
           content={{ source: path }}
@@ -103,6 +149,12 @@ export default function SearchImages(props: LaunchProps<{ arguments: Arguments.S
               <Action.Open title="Open" target={path} />
               <Action.ShowInFinder path={path} />
               <Action.ToggleQuickLook shortcut={Keyboard.Shortcut.Common.ToggleQuickLook} />
+              <Action.Push
+                title="Find Similar"
+                icon={Icon.MagnifyingGlass}
+                shortcut={{ modifiers: ["cmd"], key: "l" }}
+                target={<Similar scry={scry} folder={folder} path={path} />}
+              />
               <Action.CopyToClipboard
                 title="Copy Image"
                 content={{ file: path }}
@@ -113,59 +165,114 @@ export default function SearchImages(props: LaunchProps<{ arguments: Arguments.S
           }
         />
       ))}
-    </Grid>
+    </>
   );
 }
 
-// Shows the progress of a search that reads new images or downloads a model.
-async function search(scry: string, text: string, folder: string, signal?: AbortSignal): Promise<string[]> {
-  const args = [`--query=${text}`, "--progress", "--null", "--limit", LIMIT, "--", folder];
-  let toast: Toast | undefined;
-  try {
-    return await run(scry, args, signal, (line) => {
-      const message = line.replace(/^scry: /, "");
-      if (toast) {
-        toast.message = message;
-      } else {
-        toast = new Toast({ style: Toast.Style.Animated, title: "Searching", message });
-        void toast.show();
-      }
-    });
-  } finally {
-    void toast?.hide();
-  }
+async function search(
+  scry: string,
+  folder: string,
+  options: string[],
+  show: (status: Status | undefined) => void,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const args = ["--json", ...options, "--limit", LIMIT, "--", folder];
+  show(undefined);
+  await stopEarlierSearches();
+  signal?.throwIfAborted();
+  const started = Date.now();
+  return run(scry, args, (event) => {
+    const loading = event.type === "progress" && event.stage === "load";
+    const elapsed = Date.now() - started;
+    if (!signal?.aborted && elapsed >= DELAY && !loading) show({ event, elapsed });
+  });
 }
 
-// The paths that scry prints. Before the first path, each line on stderr is progress and goes to
-// `progress`. After the paths come notes, like the number of skipped files.
-function run(
-  scry: string,
-  args: string[],
-  signal: AbortSignal | undefined,
-  progress: (line: string) => void,
-): Promise<string[]> {
+function literal(text: string): string {
+  return text.replace(/[\\.+*?()|[\]{}^$#&\-~]/g, "\\$&");
+}
+
+type Status = { event: Download | Progress; elapsed: number };
+
+function progressView({ event, elapsed }: Status): Grid.EmptyView.Props {
+  const icon = getProgressIcon(event.total > 0 ? event.done / event.total : 0, Color.Purple);
+  const note = elapsed >= LONG ? ". You can close Raycast, scry keeps going in the background" : "";
+  if (event.type === "download") {
+    const description = `${event.label}, ${megabytes(event.done)} of ${megabytes(event.total)} MB${note}`;
+    return { icon, title: "Downloading", description };
+  }
+  const total = `${event.total.toLocaleString()}${event.walking ? "+" : ""}`;
+  return { icon, title: "Indexing", description: `${event.done.toLocaleString()} of ${total} images${note}` };
+}
+
+function megabytes(bytes: number): string {
+  return Math.round(bytes / 1e6).toLocaleString();
+}
+
+function stopEarlierSearches(): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(scry, args, { signal, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    const stderr: string[] = [];
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
-    createInterface({ input: child.stderr }).on("line", (line) => {
-      stderr.push(line);
-      if (stdout === "") progress(line);
+    execFile("/usr/bin/pkill", ["-U", String(userInfo().uid), "-f", `^${NAME} `], (error) => {
+      if (error && error.code !== 1) reject(error);
+      else resolve();
     });
-    // An abort ends here, as an AbortError that usePromise does not show.
+  });
+}
+
+type Download = { type: "download"; label: string; done: number; total: number };
+type Progress = { type: "progress"; stage: string; done: number; total: number; walking: boolean };
+type Event =
+  Download | Progress | { type: "match"; path: string } | { type: "end" } | { type: "error"; message: string };
+
+function run(scry: string, args: string[], progress: (event: Download | Progress) => void): Promise<string[]> {
+  const path = join(tmpdir(), `${NAME}-${randomUUID()}`);
+  const out = openSync(path, "wx", 0o600);
+  const stdout = openSync(path, "r");
+  unlinkSync(path);
+  return new Promise((resolve, reject) => {
+    const child = spawn(scry, args, { argv0: NAME, detached: true, stdio: ["ignore", out, "pipe"] });
+    closeSync(out);
+    const paths: string[] = [];
+    let ended = false;
+    let failure: string | undefined;
+    const read = lines(stdout, (line) => {
+      const event = JSON.parse(line) as Event;
+      if (event.type === "download" || event.type === "progress") progress(event);
+      else if (event.type === "match") paths.push(event.path);
+      else if (event.type === "end") ended = true;
+      else if (event.type === "error") failure = event.message;
+    });
+    const timer = setInterval(read, TICK);
+    let stderr = "";
+    child.stderr!.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
     child.on("error", reject);
-    child.on("close", (code, killed) => {
-      // scry exits with 1 when no image matches.
-      if (code === 0 || code === 1) {
-        resolve(stdout.split("\0").filter(Boolean));
-      } else if (stderr.some((line) => line.includes("unexpected argument '--progress'"))) {
-        reject(new Error("Update scry: this version has no --progress"));
+    child.on("close", (code, signal) => {
+      clearInterval(timer);
+      read();
+      closeSync(stdout);
+      if (ended) {
+        resolve(paths);
+      } else if (failure !== undefined) {
+        reject(new Error(failure));
+      } else if (stderr.includes("unexpected argument '--json'")) {
+        reject(new Error("Update scry to 0.6.0 or newer"));
       } else {
-        reject(new Error(stderr.join("\n").trim() || `scry exited with ${code ?? killed}`));
+        reject(new Error(stderr.trim() || `scry exited with ${code ?? signal}`));
       }
     });
   });
+}
+
+function lines(fd: number, line: (text: string) => void): () => void {
+  const buffer = Buffer.alloc(64 * 1024);
+  const decoder = new StringDecoder("utf8");
+  let rest = "";
+  return () => {
+    let n;
+    while ((n = readSync(fd, buffer)) > 0) rest += decoder.write(buffer.subarray(0, n));
+    const whole = rest.split("\n");
+    rest = whole.pop()!;
+    whole.forEach(line);
+  };
 }
 
 function findScry(): string | undefined {
