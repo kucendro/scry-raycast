@@ -16,7 +16,7 @@
   "commands": [
     {
       "name": "search-images",
-      "title": "Search",
+      "title": "Search Images",
       "description": "Find images by what they show",
       "mode": "view",
       "arguments": [
@@ -27,20 +27,27 @@
           "required": false
         }
       ]
+    },
+    {
+      "name": "search-text",
+      "title": "Search Text in Images",
+      "description": "Find images by the text in them",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "query",
+          "placeholder": "Text in the image",
+          "type": "text",
+          "required": false
+        }
+      ]
     }
   ],
   "preferences": [
     {
-      "name": "folder",
-      "title": "Folder",
-      "description": "The folder to search",
-      "type": "directory",
-      "required": true
-    },
-    {
       "name": "scryPath",
       "title": "scry Binary",
-      "description": "Leave empty to look in your PATH, ~/.local/bin, ~/.cargo/bin and the Nix profiles",
+      "description": "Leave empty to use the scry that the extension downloads",
       "type": "file",
       "required": false
     }

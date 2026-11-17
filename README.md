@@ -11,10 +11,9 @@ The search runs on [scry](https://github.com/JirkaKlimes/scry), a command-line t
 
 ## Setup
 
-1. [Install scry](https://github.com/JirkaKlimes/scry#install)
-2. Run Search, and choose the folder to search.
+1. Run Search Images or Search Text in Images, and add a folder to search.
 
-The extension looks for scry in your PATH, `~/.local/bin`, `~/.cargo/bin` and the Nix profiles. If scry is somewhere else, set its path in the extension preferences.
+The extension downloads scry 0.6.0 (about 9 MB) the first time it runs. To use your own build of scry, set its path in the extension preferences.
 
 The first search downloads the SigLIP 2 model (about 500 MB).
 
